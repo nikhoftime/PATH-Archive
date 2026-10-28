@@ -1370,3 +1370,119 @@ setInterval(() => { const t = Math.floor((Date.now() - liveStart) / 1000); liveE
   (function frame(t) { draw(t); requestAnimationFrame(frame); })(0);
 })();
 </script>
+
+<!-- ---- QR safety check: shown only to visitors who arrive by scanning the PATH Archive QR code (?via=qr) ---- -->
+<style>
+.qrgate { --po: #fd6e3e; --po2: #e2582b; --pdeep: #b9431c; --ink: #2a1a12; --body: #6a5246; --muted: #8b7366; --line: #ead9cf; --ok: #e2582b;
+  position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; overflow-y: auto; background: #fbf5f1; color: var(--ink);
+  font-family: "DM Sans", system-ui, sans-serif; animation: qrgIn .35s both; }
+.qrgate.is-leaving { animation: qrgOut .45s forwards; }
+.qrgate__mast { display: flex; align-items: center; gap: 8px; padding: 7px 16px; font-size: 13px; background: #f4e8e0; color: var(--body); }
+.qrgate__shield { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--po); color: #fff; }
+.qrgate__band { position: relative; padding: 44px 20px 0; text-align: center; color: #fff; background: linear-gradient(165deg, #ff7d47 0%, #f0602e 45%, #cf4a1f 100%); }
+.qrgate__band::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(60% 80% at 85% 0, rgba(255,214,170,.35), transparent 70%), radial-gradient(50% 70% at 10% 100%, rgba(80,20,0,.25), transparent 70%); }
+.qrgate__inner { position: relative; max-width: 520px; margin: 0 auto; }
+.qrgate__band h1 { margin: 0 0 18px; font-size: clamp(24px, 6vw, 32px); font-weight: 700; letter-spacing: -.01em; }
+.qrgate__band p { margin: 0 0 10px; font-size: 16px; line-height: 1.55; color: #fff3ea; }
+.qrgate__band p strong { color: #fff; font-weight: 700; }
+.qrgate__count { display: inline-flex !important; align-items: center; gap: 8px; margin-top: 26px !important; font-size: 13.5px !important; color: #ffe6d6 !important; }
+.qrgate__spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: qrgSpin .8s linear infinite; }
+.qrgate__art { position: relative; display: flex; justify-content: center; margin-top: 18px; margin-bottom: -17px; }
+.qrgate__art svg { max-width: 100%; height: auto; overflow: visible; }
+.qrgate__person { transform-origin: 180px 110px; animation: qrgPeek 2.4s ease-in-out infinite alternate; }
+.qrgate__scan path { stroke: #fff; opacity: 0; transition: opacity .4s, stroke .4s; }
+.qrgate__scan.is-on path { opacity: 1; }
+.qrgate__scan.is-ok path { stroke: #ffe14d; }
+.qrgate__beam { fill: #fff; opacity: 0; }
+.qrgate__scan.is-on .qrgate__beam { opacity: .9; animation: qrgBeam 1.6s ease-in-out infinite alternate; }
+.qrgate__scan.is-ok .qrgate__beam { opacity: 0; animation: none; }
+.qrgate__body { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 44px 20px 32px; text-align: center; }
+.qrgate__steps { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; list-style: none; text-align: left; font-size: 14px; color: var(--muted); }
+.qrgate__steps li { display: flex; align-items: center; gap: 10px; transition: color .3s; }
+.qrgate__steps li span { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line); color: #fff; font-size: 11px; transition: all .3s; }
+.qrgate__steps li.is-now, .qrgate__steps li.is-done { color: var(--ink); }
+.qrgate__steps li.is-now span { border-color: var(--po); border-top-color: transparent; animation: qrgSpin .8s linear infinite; }
+.qrgate__steps li.is-done span { background: var(--ok); border-color: var(--ok); }
+.qrgate__status { min-height: 1.4em; margin: 0 0 26px; font: 12px "JetBrains Mono", ui-monospace, Menlo, monospace; color: var(--muted); }
+.qrgate__skip { padding: 6px; border: 0; background: none; font: inherit; font-size: 14.5px; color: var(--pdeep); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.qrgate__skip:hover { color: var(--ink); }
+.qrgate__built { display: flex; align-items: center; gap: 12px; margin-top: auto; padding-top: 40px; font-size: 12.5px; color: var(--muted); }
+.qrgate__built img { height: 34px; width: auto; }
+.qrgate__org { text-align: left; font-size: 10px; font-weight: 700; line-height: 1.15; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+@keyframes qrgIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes qrgOut { to { opacity: 0; transform: translateY(-8px); } }
+@keyframes qrgSpin { to { transform: rotate(360deg); } }
+@keyframes qrgPeek { from { transform: translateY(2px); } to { transform: translateY(-2px); } }
+@keyframes qrgBeam { from { transform: translateY(0); } to { transform: translateY(46px); } }
+@media (prefers-reduced-motion: reduce) { .qrgate, .qrgate__person, .qrgate__spin, .qrgate__beam, .qrgate__steps li span { animation: none !important; } }
+</style>
+<script>
+(() => {
+  let via = null;
+  try { const q = new URLSearchParams(location.search), h = new URLSearchParams(location.hash.replace(/^#/, "")); via = q.get("via") || h.get("via"); } catch (e) {}
+  if (via !== "qr") return;
+  /* drop ?via=qr so a refresh or a shared link opens the archive directly */
+  try { const u = new URL(location.href); u.searchParams.delete("via"); history.replaceState(null, "", u.pathname + u.search + u.hash); } catch (e) {}
+  const STEPS = ["Poster scanned at SDE 4 ID Studio", "Photo taken by the poster", "It's you"];
+  const STATUS = ["Starting your safety check", "The poster has taken a photo to confirm it's you", "Checking your face against MFS Verification records", "Verified. Taking you to the Ministry"];
+  const g = document.createElement("div");
+  g.className = "qrgate"; g.setAttribute("role", "dialog"); g.setAttribute("aria-modal", "true"); g.setAttribute("aria-label", "Safety check");
+  g.innerHTML = `
+    <div class="qrgate__mast"><span class="qrgate__shield" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.4-7 10-4-1.6-7-5.5-7-10V6z"/></svg></span>A Singapore Government Agency Website</div>
+    <div class="qrgate__band">
+      <div class="qrgate__inner">
+        <h1>Check your address bar</h1>
+        <p>Beware of scams!<br>Only scan QR codes issued by <strong>the Ministry</strong>.</p>
+        <p class="qrgate__count" aria-live="polite"><span class="qrgate__n">You will be redirected in 8 seconds</span> <span class="qrgate__spin" aria-hidden="true"></span></p>
+      </div>
+      <div class="qrgate__art" aria-hidden="true">
+        <svg viewBox="0 0 360 150" width="360" height="150">
+          <circle cx="180" cy="50" r="48" fill="#fff" opacity=".1"/><circle cx="180" cy="50" r="32" fill="#fff" opacity=".1"/>
+          <g class="qrgate__person">
+            <path d="M132 104 C134 88 148 77 167 75 L193 75 C212 77 226 88 228 104 Z" fill="#2a1d17"/>
+            <path d="M169 75 L180 87 L191 75 Z" fill="#4a352b"/>
+            <rect x="172.5" y="62" width="15" height="14" rx="6" fill="#c98a62"/>
+            <circle cx="162.5" cy="48" r="3.8" fill="#d6966c"/><circle cx="197.5" cy="48" r="3.8" fill="#d6966c"/>
+            <ellipse cx="180" cy="46" rx="17" ry="19" fill="#e3a77c"/>
+            <circle cx="174" cy="48" r="1.5" fill="#2a1d17" opacity=".75"/><circle cx="186" cy="48" r="1.5" fill="#2a1d17" opacity=".75"/>
+            <path d="M175.5 55.5 q4.5 3 9 0" fill="none" stroke="#a8613f" stroke-width="1.4" stroke-linecap="round"/>
+            <path d="M162.4 47 C160 30 169 22.5 181 22.5 C193 22.5 200.5 30 197.6 46 C196 39 193.5 35 189 33 C182 37.5 172 38 166 36 C164 39 163 43 162.4 47 Z" fill="#2a1d17"/>
+          </g>
+          <g class="qrgate__scan">
+            <path d="M152 30 v-10 a4 4 0 0 1 4 -4 h8 M208 30 v-10 a4 4 0 0 0 -4 -4 h-8 M152 64 v10 a4 4 0 0 0 4 4 h8 M208 64 v10 a4 4 0 0 1 -4 4 h-8" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+            <rect class="qrgate__beam" x="157" y="24" width="46" height="2" rx="1"/>
+          </g>
+          <rect x="30" y="100" width="300" height="34" rx="6" fill="#fff" stroke="#ead9cf"/>
+          <circle cx="48" cy="117" r="4" fill="#ead9cf"/><circle cx="62" cy="117" r="4" fill="#ead9cf"/>
+          <path d="M82 114 v-3 a4 4 0 0 1 8 0 v3" fill="none" stroke="#6a5246" stroke-width="1.6"/><rect x="80" y="114" width="12" height="9" rx="2" fill="#6a5246"/>
+          <text x="100" y="121.5" font-size="12" fill="#2a1a12" font-family="DM Sans, system-ui, sans-serif">Ministry of Family and Society</text>
+          <rect x="146" y="95" width="19" height="10" rx="5" fill="#e3a77c"/><rect x="195" y="95" width="19" height="10" rx="5" fill="#e3a77c"/>
+        </svg>
+      </div>
+    </div>
+    <div class="qrgate__body">
+      <ol class="qrgate__steps">${STEPS.map(s => `<li><span aria-hidden="true"></span>${s}</li>`).join("")}</ol>
+      <p class="qrgate__status"></p>
+      <button class="qrgate__skip">I've checked the link. Skip ahead <span aria-hidden="true">→</span></button>
+      <div class="qrgate__built"><span>Built by</span><img src="web/mfs-logo-dark.png" alt="Ministry of Family and Society"><span class="qrgate__org">MFS<br>Digital<br>Services</span></div>
+    </div>`;
+  document.body.appendChild(g);
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let n = 8, step = 0, gone = false;
+  const lis = [...g.querySelectorAll(".qrgate__steps li")], scan = g.querySelector(".qrgate__scan");
+  const paint = () => {
+    g.querySelector(".qrgate__n").textContent = `You will be redirected in ${n} second${n === 1 ? "" : "s"}`;
+    lis.forEach((li, i) => { li.className = step > i ? "is-done" : step === i ? "is-now" : ""; li.firstChild.textContent = step > i ? "✓" : ""; });
+    g.querySelector(".qrgate__status").textContent = STATUS[step] + "…";
+    scan.classList.toggle("is-on", step >= 1); scan.classList.toggle("is-ok", step >= 3);
+  };
+  const timers = [setTimeout(() => { step = 1; paint(); }, 1400), setTimeout(() => { step = 2; paint(); }, 3600), setTimeout(() => { step = 3; paint(); }, 5800)];
+  const tick = setInterval(() => { n = Math.max(0, n - 1); paint(); if (n <= 0) leave(); }, 1000);
+  function leave() {
+    if (gone) return; gone = true; clearInterval(tick); timers.forEach(clearTimeout);
+    g.classList.add("is-leaving"); setTimeout(() => g.remove(), reduce ? 0 : 450);
+  }
+  g.querySelector(".qrgate__skip").onclick = leave;
+  paint();
+})();
+</script>
